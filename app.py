@@ -2,10 +2,14 @@ from flask import Flask, render_template, request, session, redirect, url_for
 from playwright.sync_api import sync_playwright
 import time
 import requests
+import os
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key_here'  # Change this to a strong secret key
+# Use environment variable for secret key in production
+app.secret_key = os.environ.get('SECRET_KEY', 'your_secret_key_here')
 app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_USE_SIGNER'] = True
 
 # College portal URLs
 COLLEGE_LOGIN_URL = "http://43.250.40.63/Login.aspx?ReturnUrl=%2fStudentLogin%2fMainStud.aspx"
@@ -21,34 +25,39 @@ def is_college_portal_available():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        
-        if not is_college_portal_available():
-            return render_template('login.html', error="College portal is currently unavailable. Please try again later.")
-        
-        # Store credentials in session
-        session['college_credentials'] = {
-            'username': username,
-            'password': password
-        }
-        
-        try:
-            # Scrape attendance data
-            attendance_data = scrape_attendance(username, password)
+    try:
+        if request.method == 'POST':
+            username = request.form['username']
+            password = request.form['password']
             
-            # Store scraped data in session
-            session['scraped_data'] = {
-                'current_attended': attendance_data['attended'],
-                'current_conducted': attendance_data['conducted']
+            if not is_college_portal_available():
+                return render_template('login.html', error="College portal is currently unavailable. Please try again later.")
+            
+            # Store credentials in session
+            session['college_credentials'] = {
+                'username': username,
+                'password': password
             }
             
-            return redirect(url_for('index'))
-        except Exception as e:
-            return render_template('login.html', error=f"Failed to fetch attendance: {str(e)}")
-    
-    return render_template('login.html')
+            try:
+                # Scrape attendance data
+                attendance_data = scrape_attendance(username, password)
+                
+                # Store scraped data in session
+                session['scraped_data'] = {
+                    'current_attended': attendance_data['attended'],
+                    'current_conducted': attendance_data['conducted']
+                }
+                
+                return redirect(url_for('index'))
+            except Exception as e:
+                print(f"Login error: {str(e)}")  # Add logging
+                return render_template('login.html', error=f"Failed to fetch attendance: {str(e)}")
+        
+        return render_template('login.html')
+    except Exception as e:
+        print(f"Unexpected error in login route: {str(e)}")  # Add logging
+        return render_template('login.html', error="An unexpected error occurred. Please try again.")
 
 def scrape_attendance(username, password):
     from playwright.sync_api import sync_playwright
@@ -163,69 +172,68 @@ def scrape_attendance(username, password):
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
+    # Default values
+    default_values = {
+        'current_attended': 0,
+        'current_conducted': 0,
+        'willing_to_attend': 0,
+        'conducted_to_add': 0,
+        'custom_percentage_attend': 75,
+        'custom_percentage_miss': 75
+    }
+
     # Check if scraped data exists in session
     if 'scraped_data' in session:
-        default_values = {
+        default_values.update({
             'current_attended': session['scraped_data']['current_attended'],
-            'current_conducted': session['scraped_data']['current_conducted'],
-            'willing_to_attend': 0,
-            'conducted_to_add': 0,
-            'custom_percentage_attend': 75,
-            'custom_percentage_miss': 75
-        }
-    else:
-        # Default values if no scraped data
-        default_values = {
-            'current_attended': 0,
-            'current_conducted': 0,
-            'willing_to_attend': 0,
-            'conducted_to_add': 0,
-            'custom_percentage_attend': 75,
-            'custom_percentage_miss': 75
-        }
+            'current_conducted': session['scraped_data']['current_conducted']
+        })
 
     # Check if previous values are in session
     if 'previous_values' in session:
         default_values.update(session['previous_values'])
 
     if request.method == 'POST':
-        # Get form data
-        current_attended = int(request.form['current_attended'])
-        current_conducted = int(request.form['current_conducted'])
-        willing_to_attend = int(request.form['willing_to_attend'])
-        conducted_to_add = int(request.form['conducted_to_add'])
-        custom_percentage_attend = int(request.form.get('custom_percentage_attend', 75))
-        custom_percentage_miss = int(request.form.get('custom_percentage_miss', 75))
+        try:
+            # Get form data
+            current_attended = int(request.form['current_attended'])
+            current_conducted = int(request.form['current_conducted'])
+            willing_to_attend = int(request.form['willing_to_attend'])
+            conducted_to_add = int(request.form['conducted_to_add'])
+            custom_percentage_attend = int(request.form.get('custom_percentage_attend', 75))
+            custom_percentage_miss = int(request.form.get('custom_percentage_miss', 75))
 
-        # Store values in session
-        session['previous_values'] = {
-            'current_attended': current_attended,
-            'current_conducted': current_conducted,
-            'willing_to_attend': willing_to_attend,
-            'conducted_to_add': conducted_to_add,
-            'custom_percentage_attend': custom_percentage_attend,
-            'custom_percentage_miss': custom_percentage_miss
-        }
+            # Store values in session
+            session['previous_values'] = {
+                'current_attended': current_attended,
+                'current_conducted': current_conducted,
+                'willing_to_attend': willing_to_attend,
+                'conducted_to_add': conducted_to_add,
+                'custom_percentage_attend': custom_percentage_attend,
+                'custom_percentage_miss': custom_percentage_miss
+            }
 
-        # Calculate attendance
-        total_attended = current_attended + willing_to_attend
-        total_conducted = current_conducted + conducted_to_add
+            # Calculate attendance
+            total_attended = current_attended + willing_to_attend
+            total_conducted = current_conducted + conducted_to_add
 
-        if total_conducted == 0:
-            return render_template('index.html', error="Total classes conducted cannot be zero", **default_values)
+            if total_conducted == 0:
+                return render_template('index.html', error="Total classes conducted cannot be zero", **default_values)
 
-        current_percentage = (current_attended / current_conducted) * 100 if current_conducted > 0 else 0
-        future_percentage = (total_attended / total_conducted) * 100
+            current_percentage = (current_attended / current_conducted) * 100 if current_conducted > 0 else 0
+            future_percentage = (total_attended / total_conducted) * 100
 
-        return render_template('result.html',
-                             current_attended=current_attended,
-                             current_conducted=current_conducted,
-                             willing_to_attend=willing_to_attend,
-                             conducted_to_add=conducted_to_add,
-                             current_percentage=current_percentage,
-                             future_percentage=future_percentage,
-                             custom_percentage_attend=custom_percentage_attend,
-                             custom_percentage_miss=custom_percentage_miss)
+            return render_template('result.html',
+                                current_attended=current_attended,
+                                current_conducted=current_conducted,
+                                willing_to_attend=willing_to_attend,
+                                conducted_to_add=conducted_to_add,
+                                current_percentage=current_percentage,
+                                future_percentage=future_percentage,
+                                custom_percentage_attend=custom_percentage_attend,
+                                custom_percentage_miss=custom_percentage_miss)
+        except Exception as e:
+            return render_template('index.html', error=f"An error occurred: {str(e)}", **default_values)
 
     return render_template('index.html', **default_values)
 
@@ -234,4 +242,5 @@ def health():
     return 'OK', 200
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000, debug=False)
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, debug=False)

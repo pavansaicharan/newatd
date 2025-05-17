@@ -1,6 +1,3 @@
-
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,6 +9,11 @@
 <body>
     <div class="container">
         <h1>Attendance Tracker</h1>
+        {% if error %}
+        <div class="error-message">
+            {{ error }}
+        </div>
+        {% endif %}
         <div class="buttons">
             <button type="button" onclick="window.location.href='/login'" 
                     style="background-color: #2196F3; margin-bottom: 15px;">
@@ -21,19 +23,19 @@
         <form method="POST">
             <label for="current_attended"> Classes Attended:</label>
                 <input type="number" id="current_attended" name="current_attended" required 
-                    value="{{ previous_values['current_attended'] }}" 
+                    value="{{ current_attended }}" 
                     onfocus="clearDefaultValue(this)" 
                     onblur="restoreDefaultValue(this)">
     
                 <label for="current_conducted"> Classes Conducted:</label>
                 <input type="number" id="current_conducted" name="current_conducted" required 
-                    value="{{ previous_values['current_conducted'] }}" 
+                    value="{{ current_conducted }}" 
                     onfocus="clearDefaultValue(this)" 
                     onblur="restoreDefaultValue(this)">
     
                 <label for="willing_to_attend">Classes Willing to Attend:</label>
                 <input type="number" id="willing_to_attend" name="willing_to_attend" required 
-                    value="{{ previous_values['willing_to_attend'] }}" 
+                    value="{{ willing_to_attend }}" 
                     onfocus="clearDefaultValue(this)" 
                     onblur="restoreDefaultValue(this)">
                 <div class="buttons">
@@ -45,7 +47,7 @@
     
                 <label for="conducted_to_add">Classes to Be Conducted:</label>
                 <input type="number" id="conducted_to_add" name="conducted_to_add" required 
-                    value="{{ previous_values['conducted_to_add'] }}" 
+                    value="{{ conducted_to_add }}" 
                     onfocus="clearDefaultValue(this)" 
                     onblur="restoreDefaultValue(this)">
                 <div class="buttons">
@@ -56,7 +58,6 @@
                 </div>
     
                 <button type="submit">Calculate Attendance</button>
-            <!-- Rest of your existing form -->
         </form>
     </div>
 
@@ -66,28 +67,24 @@
             let currentValue = parseInt(input.value);
     
             if (isNaN(currentValue)) {
-                currentValue = 0; // If the value is not a valid number, treat it as 0
+                currentValue = 0;
             }
             
-            // Increment the value
             input.value = currentValue + value;
         }
     
         function clearDefaultValue(input) {
-            // Only clear the default value when it is exactly 0
             if (input.value === "0") {
                 input.value = "";
             }
         }
     
         function restoreDefaultValue(input) {
-            // If the input is empty, restore it back to "0"
             if (input.value === "") {
                 input.value = "0";
             }
         }
     
-        // You might need to ensure the default value (0) is set when the page is loaded or reset.
         window.onload = function() {
             const inputs = document.querySelectorAll("input");
             inputs.forEach(input => {
@@ -97,6 +94,5 @@
             });
         };
     </script>
-    
 </body>
 </html>
